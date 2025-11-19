@@ -13661,20 +13661,19 @@ function appendMessage(msg, chat, isInitialLoad = false) {
 
     if (!messageEl) return; // 如果消息是隐藏的，则不处理
 
-    // 核心：只对新消息添加动画，不对初始加载的消息添加
-    if (!isInitialLoad) {
-        messageEl.classList.add('animate-in');
-    }
+    // 核心修复 1: 移除 animate-in 类，消除 CSS 动画对布局的干扰
+    // if (!isInitialLoad) {
+    //     messageEl.classList.add('animate-in'); // <--- 移除此行！
+    // }
   
     const typingIndicator = document.getElementById('typing-indicator');
     messagesContainer.insertBefore(messageEl, typingIndicator);
     
     if (!isInitialLoad) {
-        // 关键修复：将滚动操作延迟执行
-        // 50ms足以让浏览器完成DOM插入和初次CSS渲染
-        setTimeout(() => {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }, 50); 
+        // 核心修复 2: 使用 requestAnimationFrame 确保在浏览器下次重绘前滚动
+        requestAnimationFrame(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; 
+        });
         
         currentRenderedCount++;
     }
@@ -37948,40 +37947,44 @@ async function clearAllQzonePosts() {
         await showCustomAlert('操作失败', `清空动态时发生错误: ${error.message}`);
     }
 }
+// 检查 xSocialAuth 对象是否已定义
 if (typeof xSocialAuth !== 'undefined') {
     
-    // 覆盖它的核心检查函数，强制返回“已解锁”
-    // 假设它有一个名为 checkStatus 或 isLocked 的核心函数
-    if (typeof xSocialAuth.checkStatus === 'function') {
-        xSocialAuth.checkStatus = function() {
-            console.warn("🔐 X Social 权限检查被绕过！返回强制解锁状态。");
-            return { isUnlocked: true };
-        };
-    }
-
-    // 覆盖它的拦截函数（如果有的话）
+    console.warn("🔒 强制解锁：开始覆盖 X Social 权限保护模块...");
+    
+    // 1. 覆盖 requireAuth 函数
+    // 这是最可能拦截屏幕切换并弹出密码框的函数。
+    // 我们将其重定义为：直接执行传入的回调函数 (callback)，从而跳过所有密码检查。
     if (typeof xSocialAuth.requireAuth === 'function') {
         xSocialAuth.requireAuth = function(callback) {
-            console.warn("🔐 X Social 拦截函数被绕过！直接执行回调。");
+            console.warn("✅ X Social 权限检查 (requireAuth) 被绕过。");
             if (typeof callback === 'function') {
-                callback(); // 直接执行后续的渲染操作
+                callback(); // 直接执行后续功能（即打开 X 社交屏幕）
             }
         };
     }
+    
+    // 2. 覆盖 checkStatus 函数（可选，但更彻底）
+    // 这个函数通常用来检查当前状态，我们让它返回永久解锁。
+    if (typeof xSocialAuth.checkStatus === 'function') {
+        xSocialAuth.checkStatus = function() {
+            console.warn("✅ X Social 状态检查 (checkStatus) 被绕过，强制返回解锁状态。");
+            return { isUnlocked: true }; // 返回一个表示已解锁的对象
+        };
+    }
+
+    // 3. 覆盖任何可能的锁屏/弹窗函数（可选）
+    if (typeof xSocialAuth.showPinModal === 'function') {
+        xSocialAuth.showPinModal = function() {
+            console.warn("✅ X Social PIN 码弹窗函数被禁用。");
+            // 不做任何操作，防止弹窗出现
+        };
+    }
+    
+    console.warn("🎉 X Social 权限模块已成功禁用。");
+    
 } else {
-    // 这是一个备用方案：如果 XSocialAuth 不存在，但锁是在全局 showScreen 里检查的，我们在这里注入一个空函数。
-    const originalShowScreen = window.showScreen;
-    window.showScreen = function(screenId) {
-        if (screenId === 'x-social-screen' || screenId === 'x-live-screen') {
-             console.warn("🔐 X Social 权限检查被绕过！");
-             // 强制将任何可能的锁定变量设为 false (如果你的代码中存在此类全局变量)
-             window.xSocialLocked = false; 
-             window.xLiveLocked = false; 
-        }
-        if (originalShowScreen) {
-            originalShowScreen(screenId);
-        }
-    };
+    console.error("⚠️ 错误：XSocialAuth 对象未找到。请确认此代码放置位置。");
 }
         // ===================================================================
         // 4. 初始化函数 init()
